@@ -4,48 +4,56 @@ primer_f = "GATATCCGTTGCCGAGAGTC"
 primer_r = "CCGAAGGCGTCAAGGAACAC"
 max_len = "90"
 min_len = "50"
+
+# Iterations: 0, 1, 2
 ITER = range(0, 3)
 
+############################################
+# FINAL TARGET
+############################################
+
 rule all:
-    input: 
+    input:
         f"sequences/{target}_seq_segments_derep_cull_2.qza"
 
+############################################
+# ONE-OFF PREPROCESSING STEPS
+############################################
 
 rule get_ncbi:
     conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
     output:
         sequences = f"sequences/{target}_ref_seq.qza",
         taxonomy = f"taxonomy/{target}_ref_tax.qza",
-    threads : 1
+    threads: 1
     shell:
         r"""
-        mkdir -p taxonomy
-        mkdir -p sequences
+        mkdir -p taxonomy sequences
         qiime rescript get-ncbi-data \
-        --p-query 'txid35493[ORGN] AND ({target_aliases}) NOT environmental sample[Filter] NOT environmental samples[Filter] NOT environmental[Title] NOT uncultured[Title] NOT unclassified[Title] NOT unidentified[Title] NOT unverified[Title]' \
-            --p-ranks  kingdom phylum class order family genus species \
+            --p-query 'txid35493[ORGN] AND ({target_aliases}) NOT environmental sample[Filter] NOT environmental samples[Filter] NOT environmental[Title] NOT uncultured[Title] NOT unclassified[Title] NOT unidentified[Title] NOT unverified[Title]' \
+            --p-ranks kingdom phylum class order family genus species \
             --p-rank-propagation \
             --p-n-jobs 1 \
             --o-sequences {output.sequences} \
-            --o-taxonomy  {output.taxonomy} \
+            --o-taxonomy {output.taxonomy} \
             --verbose
         """
 
 rule rescript_dereplicate:
     conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
     input:
-       sequences = f"sequences/{target}_ref_seq.qza",
-       taxonomy = f"taxonomy/{target}_ref_tax.qza",
+        sequences = f"sequences/{target}_ref_seq.qza",
+        taxonomy = f"taxonomy/{target}_ref_tax.qza",
     output:
         dereplicated_sequences = f"sequences/{target}_ref_seq_derep.qza",
         dereplicated_taxonomy = f"taxonomy/{target}_ref_tax_derep.qza",
-    threads : 8
+    threads: 8
     shell:
         r"""
         qiime rescript dereplicate \
             --i-sequences {input.sequences} \
             --i-taxa {input.taxonomy} \
-            --p-mode 'uniq' \
+            --p-mode uniq \
             --p-threads {threads} \
             --o-dereplicated-sequences {output.dereplicated_sequences} \
             --o-dereplicated-taxa {output.dereplicated_taxonomy}
@@ -57,8 +65,8 @@ rule extract_reads:
         sequences = f"sequences/{target}_ref_seq_derep.qza"
     output:
         extracted_reads = f"sequences/{target}_seq_segments.qza"
-    threads : 8
-    shell: 
+    threads: 8
+    shell:
         r"""
         qiime feature-classifier extract-reads \
             --i-sequences {input.sequences} \
@@ -70,8 +78,15 @@ rule extract_reads:
             --o-reads {output.extracted_reads}
         """
 
+############################################
+# ITERATIVE REFINEMENT STEPS (i = 0,1,2)
+############################################
+
+# extract-seq-segments only runs for i = 1 and i = 2
 rule extract_segments:
     conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    wildcard_constraints:
+        i = "1|2"
     input:
         ref = f"sequences/{target}_ref_seq_derep.qza",
         refseg = lambda wc: (
@@ -95,8 +110,11 @@ rule extract_segments:
             --o-unmatched-sequences {output.unmatched}
         """
 
+# dereplicate runs for i = 0,1,2
 rule dereplicate_iter:
     conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    wildcard_constraints:
+        i = "0|1|2"
     input:
         seq = lambda wc: (
             f"sequences/{target}_seq_segments.qza"
@@ -119,8 +137,11 @@ rule dereplicate_iter:
             --o-dereplicated-taxa {output.tax_d}
         """
 
+# cull runs for i = 0,1,2
 rule cull_iter:
     conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    wildcard_constraints:
+        i = "0|1|2"
     input:
         seq_d = f"sequences/{target}_seq_segments_derep_{{i}}.qza"
     output:
@@ -136,8 +157,11 @@ rule cull_iter:
             --o-clean-sequences {output.clean}
         """
 
+# tabulate runs for i = 0,1,2
 rule tabulate_iter:
     conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    wildcard_constraints:
+        i = "0|1|2"
     input:
         clean = f"sequences/{target}_seq_segments_derep_cull_{{i}}.qza"
     output:
