@@ -4,14 +4,12 @@ primer_f = "GATATCCGTTGCCGAGAGTC"
 primer_r = "CCGAAGGCGTCAAGGAACAC"
 max_len = "90"
 min_len = "50"
+ITER = range(0, 3)
 
 rule all:
     input: 
-        f"taxonomy/{target}_ref_tax.qza",
-        f"sequences/{target}_ref_seq.qza",
-        f"sequences/{target}_ref_seq_derep.qza",
-        f"taxonomy/{target}_ref_tax_derep.qza",
-        f"sequences/{target}_seq_segments.qza",
+        f"sequences/{target}_seq_segments_derep_cull_2.qza"
+
 
 rule get_ncbi:
     conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
@@ -71,3 +69,84 @@ rule extract_reads:
             --p-n-jobs {threads} \
             --o-reads {output.extracted_reads}
         """
+
+rule extract_segments:
+    conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    input:
+        ref = f"sequences/{target}_ref_seq_derep.qza",
+        refseg = lambda wc: (
+            f"sequences/{target}_seq_segments_derep_cull_0.qza"
+            if int(wc.i) == 1
+            else f"sequences/{target}_extracted_seq_segments_derep_cull_{int(wc.i)-1}.qza"
+        )
+    output:
+        seg = f"sequences/{target}_extracted_seq_segments_{{i}}.qza",
+        unmatched = f"sequences/{target}_unmatched_sequences_{{i}}.qza"
+    threads: 8
+    shell:
+        r"""
+        qiime rescript extract-seq-segments \
+            --i-input-sequences {input.ref} \
+            --i-reference-segment-sequences {input.refseg} \
+            --p-perc-identity 0.7 \
+            --p-min-seq-len 10 \
+            --p-threads {threads} \
+            --o-extracted-sequence-segments {output.seg} \
+            --o-unmatched-sequences {output.unmatched}
+        """
+
+rule dereplicate_iter:
+    conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    input:
+        seq = lambda wc: (
+            f"sequences/{target}_seq_segments.qza"
+            if int(wc.i) == 0
+            else f"sequences/{target}_extracted_seq_segments_{wc.i}.qza"
+        ),
+        tax = f"taxonomy/{target}_ref_tax_derep.qza"
+    output:
+        seq_d = f"sequences/{target}_seq_segments_derep_{{i}}.qza",
+        tax_d = f"taxonomy/{target}_tax_segments_derep_{{i}}.qza"
+    threads: 8
+    shell:
+        r"""
+        qiime rescript dereplicate \
+            --i-sequences {input.seq} \
+            --i-taxa {input.tax} \
+            --p-mode uniq \
+            --p-threads {threads} \
+            --o-dereplicated-sequences {output.seq_d} \
+            --o-dereplicated-taxa {output.tax_d}
+        """
+
+rule cull_iter:
+    conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    input:
+        seq_d = f"sequences/{target}_seq_segments_derep_{{i}}.qza"
+    output:
+        clean = f"sequences/{target}_seq_segments_derep_cull_{{i}}.qza"
+    threads: 8
+    shell:
+        r"""
+        qiime rescript cull-seqs \
+            --i-sequences {input.seq_d} \
+            --p-n-jobs {threads} \
+            --p-num-degenerates 1 \
+            --p-homopolymer-length 8 \
+            --o-clean-sequences {output.clean}
+        """
+
+rule tabulate_iter:
+    conda: "/users/wwilber/.conda/envs/qiime2-amplicon-2026.1"
+    input:
+        clean = f"sequences/{target}_seq_segments_derep_cull_{{i}}.qza"
+    output:
+        viz = f"visualizations/{target}_seq_segments_derep_cull_{{i}}.qzv"
+    shell:
+        r"""
+        mkdir -p visualizations
+        qiime feature-table tabulate-seqs \
+            --i-data {input.clean} \
+            --o-visualization {output.viz}
+        """
+
