@@ -23,3 +23,4 @@ conda activate snakemake-env
 snakemake --profile profiles/hpc --jobs 1
 ```
 
+Job number can be increased based on local HPC etiquette but there are not significant benefits to increasing concurrent job number in this workflow.
