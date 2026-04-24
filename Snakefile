@@ -14,7 +14,14 @@ ITER = range(0, 3)
 
 rule all:
     input:
-        f"sequences/{target}_seq_segments_derep_cull_2.qza"
+        # final culled outputs for all iterations
+        expand(f"sequences/{target}_seq_segments_derep_cull_{{i}}.qza", i=ITER),
+
+        # extracted segments for iterations 1 and 2
+        expand(f"sequences/{target}_extracted_seq_segments_{{i}}.qza", i=[1,2]),
+
+        # visualization for all iterations
+        expand(f"visualizations/{{target}}_seq_segments_derep_cull_{{i}}.qzv", target=target, i=ITER)
 
 ############################################
 # ONE-OFF PREPROCESSING STEPS
@@ -92,7 +99,7 @@ rule extract_segments:
         refseg = lambda wc: (
             f"sequences/{target}_seq_segments_derep_cull_0.qza"
             if int(wc.i) == 1
-            else f"sequences/{target}_extracted_seq_segments_derep_cull_{int(wc.i)-1}.qza"
+            else f"sequences/{target}_seq_segments_derep_cull_{int(wc.i)-1}.qza"
         )
     output:
         seg = f"sequences/{target}_extracted_seq_segments_{{i}}.qza",
