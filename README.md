@@ -1,3 +1,5 @@
+Update 2026-07-24: I am no longer using this approach for reference library generation from publically available data and this project will remain unfinished. My early development materials will remain available here. 
+
 This is the project directory for preparing a reference library to be used in the diet metabarcoding 24480 pipeline. This library construction is under early development.
 
 Reproducing this analysis requires Conda and a Unix environment.
